@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "emerald_utils"
+version = "0.1.0"
+description = "Crypto utilities, encrypted SQLAlchemy fields, and experimental secret resolvers."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Clinton Bunch" }
+]
+requires-python = ">=3.10"
+
+dependencies = [
+    "cryptography>=41.0",
+    "sqlalchemy>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/cdbunch72/emerald_utils"
