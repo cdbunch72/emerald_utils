@@ -1,18 +1,51 @@
 # SPDX-License-Identifier: MPL-2.0
-# Copyright 2026, Clinton Bunch. All rights reserved.
+# Copyright 2026,
 # emerald_utils/experimental/secrets_resolver.py
 
 from __future__ import annotations
 
 import os
 from functools import lru_cache
+from typing import Callable, Optional
 
-from emerald_utils.encrypted_fields import decrypt_string, is_encrypted_prefix
+from emerald_utils.encrypted_fields import (
+    decrypt_string,
+    is_encrypted_prefix,
+    parse_encrypted_field,
+    KeyContext,
+)
 from emerald_utils.experimental.sqlexp import get_secret
 
 
+# ---------------------------------------------------------------------------
+# Global cache + keyctx resolver
+# ---------------------------------------------------------------------------
+
 _cache = {}
 
+_keyctx_resolver: Optional[Callable[[int], KeyContext]] = None
+
+
+def set_keyctx_resolver(func: Callable[[int], KeyContext]) -> None:
+    """
+    Register a resolver that, given a keyid, returns the correct KeyContext.
+    The application must call this at startup.
+    """
+    global _keyctx_resolver
+    _keyctx_resolver = func
+
+
+def _resolve_keyctx_for_ciphertext(value: str) -> KeyContext:
+    if _keyctx_resolver is None:
+        raise RuntimeError("set_keyctx_resolver(...) must be called before resolving encrypted secrets")
+
+    _, keyid, _ = parse_encrypted_field(value)
+    return _keyctx_resolver(keyid)
+
+
+# ---------------------------------------------------------------------------
+# env:
+# ---------------------------------------------------------------------------
 
 def resolve_env(varname: str) -> str:
     if varname in _cache:
@@ -23,11 +56,17 @@ def resolve_env(varname: str) -> str:
         raise KeyError(f"missing environment variable {varname}")
 
     _cache[varname] = value
+
+    # scrub environment variable after first read
     if varname in os.environ:
         del os.environ[varname]
 
     return value
 
+
+# ---------------------------------------------------------------------------
+# file:
+# ---------------------------------------------------------------------------
 
 def resolve_file(path: str) -> str:
     if path in _cache:
@@ -38,11 +77,13 @@ def resolve_file(path: str) -> str:
 
     _cache[path] = value
     return value
+
+
+# ---------------------------------------------------------------------------
+# secret:
+# ---------------------------------------------------------------------------
+
 def resolve_secretfile(name: str) -> str:
-    """
-    Resolve secret:name by searching known secret directories.
-    Caches the value after first read.
-    """
     if name in _cache:
         return _cache[name]
 
@@ -67,15 +108,36 @@ def resolve_secretfile(name: str) -> str:
     raise FileNotFoundError(f"secret '{name}' not found in known secret directories")
 
 
+# ---------------------------------------------------------------------------
+# sqlexp:
+# ---------------------------------------------------------------------------
 
-def resolve_sqlexp(session, keyctx, logical_key: str) -> str | None:
+def resolve_sqlexp(session, logical_key: str) -> str | None:
     stored = get_secret(session, logical_key)
     if stored is None:
         return None
-    return decrypt_string(stored, keyctx)
+
+    if is_encrypted_prefix(stored):
+        keyctx = _resolve_keyctx_for_ciphertext(stored)
+        return decrypt_string(stored, keyctx)
+
+    return stored
 
 
-def resolve_secret(value: str, *, session=None, keyctx=None):
+# ---------------------------------------------------------------------------
+# main dispatcher
+# ---------------------------------------------------------------------------
+
+def resolve_secret(value: str, *, session=None):
+    """
+    Resolve a secret reference:
+      - env:VAR
+      - file:/path
+      - secret:name
+      - sqlexp:key
+      - encrypted field
+      - literal string
+    """
     if value.startswith("env:"):
         return resolve_env(value[4:])
 
@@ -86,13 +148,12 @@ def resolve_secret(value: str, *, session=None, keyctx=None):
         return resolve_secretfile(value[7:])
 
     if value.startswith("sqlexp:"):
-        if session is None or keyctx is None:
-            raise RuntimeError("sqlexp: requires session and keyctx")
-        return resolve_sqlexp(session, keyctx, value[7:])
+        if session is None:
+            raise RuntimeError("sqlexp: requires a SQLAlchemy session")
+        return resolve_sqlexp(session, value[7:])
 
     if is_encrypted_prefix(value):
-        if keyctx is None:
-            raise RuntimeError("encrypted field requires keyctx")
+        keyctx = _resolve_keyctx_for_ciphertext(value)
         return decrypt_string(value, keyctx)
 
     return value
