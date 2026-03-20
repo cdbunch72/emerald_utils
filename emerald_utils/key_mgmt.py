@@ -209,18 +209,16 @@ def derive_and_verify_kek(
     return kek
 
 
-# ---------------------------------------------------------------------------
-# Key re-encryption (KEK rotation)
-# ---------------------------------------------------------------------------
-
 def reencrypt_keys(
     old_kek: bytes,
     new_kek: bytes,
     records: Iterable[KeyRecord],
+    new_alg: Optional[str] = None,
 ) -> list[KeyRecord]:
     """
     Re-encrypt all keys under a new KEK.
-    Returns updated KeyRecords (same keyids).
+    If new_alg is provided, rewrap using that algorithm.
+    Otherwise preserve each record's existing algorithm.
     """
     updated = []
 
@@ -229,28 +227,35 @@ def reencrypt_keys(
             continue  # KEK-check handled separately
 
         key = unwrap_key(old_kek, rec)
-        new_blob = encrypt_with_alg(rec.alg, new_kek, key)
-        updated.append(KeyRecord(keyid=rec.keyid, alg=rec.alg, encrypted_key=new_blob))
+        alg = new_alg or rec.alg
+        new_blob = encrypt_with_alg(alg, new_kek, key)
+
+        updated.append(
+            KeyRecord(
+                keyid=rec.keyid,
+                alg=alg,
+                encrypted_key=new_blob,
+            )
+        )
 
     return updated
 
-
-# ---------------------------------------------------------------------------
-# KEK rotation
-# ---------------------------------------------------------------------------
 
 def rotate_kek(
     old_kek: bytes,
     new_kek: bytes,
     records: Iterable[KeyRecord],
+    new_alg: Optional[str] = None,
 ) -> tuple[KeyRecord, list[KeyRecord]]:
     """
     Rotate the KEK:
       - Rewrap all keys under the new KEK
       - Create a new KEK-check record
+      - Optionally update the encryption algorithm for all keys
+
     Returns:
       (new_kek_check_record, updated_key_records)
     """
     new_check = make_kek_check_record(new_kek)
-    updated = reencrypt_keys(old_kek, new_kek, records)
+    updated = reencrypt_keys(old_kek, new_kek, records, new_alg=new_alg)
     return new_check, updated
