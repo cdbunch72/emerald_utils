@@ -12,8 +12,8 @@ from emerald_utils.encrypted_fields import (
     decrypt_string,
     is_encrypted_prefix,
     parse_encrypted_field,
-    KeyContext,
 )
+from emerald_utils.types import KeyContext
 from emerald_utils.experimental.sqlexp import get_secret
 
 

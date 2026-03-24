@@ -4,10 +4,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Optional, Tuple
 
 from .crypto import encrypt_with_alg, decrypt_with_alg, b64encode, b64decode
+from .types import KeyContext
 
 ALG_ID = "A256GCM"  # field-level algorithm id
 
@@ -31,17 +31,10 @@ def parse_encrypted_field(value: str) -> Tuple[str, int, bytes]:
     return alg_id, keyid, blob
 
 
-@dataclass
-class KeyContext:
-    keyid: int
-    dk: bytes
-    alg: str = ALG_ID  # field-level alg; can be extended later
-
-
 def encrypt_string(plaintext: Optional[str], keyctx: KeyContext) -> Optional[str]:
     if plaintext is None:
         return None
-    blob = encrypt_with_alg(keyctx.alg, keyctx.dk, plaintext.encode("utf-8"))
+    blob = encrypt_with_alg(keyctx.alg, keyctx.key, plaintext.encode("utf-8"))
     return format_encrypted_field(keyctx.keyid, blob)
 
 
@@ -56,4 +49,4 @@ def decrypt_string(value: Optional[str], keyctx: KeyContext) -> Optional[str]:
     if keyid != keyctx.keyid:
         raise ValueError(f"unexpected keyid {keyid}")
 
-    return decrypt_with_alg(keyctx.alg, keyctx.dk, blob).decode("utf-8")
+    return decrypt_with_alg(keyctx.alg, keyctx.key, blob).decode("utf-8")

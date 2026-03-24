@@ -20,8 +20,8 @@ class KeyRecord:
 @dataclass
 class KeyContext:
     """
-    Active key context for decrypting encrypted fields.
+    Active key context for field encryption (data key + keyid + algorithm).
     """
     keyid: int
     key: bytes
-    alg: str
+    alg: str = "A256GCM"
