@@ -1,8 +1,58 @@
-# emerald_utils release notes
+# gemstone_utils release notes
 
-## v0.2.0 (current)
+## v0.2.1 (current)
 
-**Tag:** `v0.2.0` 
+**Tag:** `v0.2.1`
+
+### Overview
+
+This release **renames the distribution and Python package** from `emerald_utils` to **`gemstone_utils`** (top-level package directory and `pip install` name). Behavior and public APIs are otherwise unchanged from v0.2.0; this is a branding and clarity update.
+
+The project homepage URL is [github.com/cdbunch72/gemstone_utils](https://github.com/cdbunch72/gemstone_utils). If your Git remote or older docs still reference `emerald_utils`, update them when you migrate.
+
+### Highlights
+
+- **Breaking — package name:** PyPI/install name is **`gemstone_utils`**; import paths use the **`gemstone_utils`** package (for example `gemstone_utils.types`, `gemstone_utils.crypto`).
+- **Optional extras:** Use `pip install 'gemstone_utils[azure]'` instead of `emerald_utils[azure]`.
+
+### Migration notes (from v0.2.0 / `emerald_utils`)
+
+1. `pip uninstall emerald_utils` (if installed) and `pip install gemstone_utils` (pin `gemstone_utils==0.2.1` if you want an exact version).
+2. Replace import prefixes `emerald_utils` → `gemstone_utils` across your codebase (including experimental subpackages).
+3. Update dependency declarations (for example `pyproject.toml` / `requirements.txt`) from `emerald_utils` to `gemstone_utils`.
+
+Encrypted data, `KeyContext`, and SQLAlchemy column behavior are unchanged; only names and install targets move.
+
+### Requirements
+
+- Python ≥ 3.10  
+- Core: `cryptography` ≥ 41, `sqlalchemy` ≥ 2.0  
+- Optional: `pip install 'gemstone_utils[azure]'` for Key Vault
+
+### Installation
+
+```bash
+pip install gemstone_utils
+```
+
+Or from a GitHub release asset (after you publish `v0.2.1`):
+
+```bash
+pip install https://github.com/cdbunch72/gemstone_utils/releases/download/v0.2.1/gemstone_utils-0.2.1.tar.gz
+```
+
+If the GitHub repository slug is still `emerald_utils`, use `.../emerald_utils/releases/download/...` and the matching sdist filename until the repo is renamed.
+
+### License
+
+[Mozilla Public License 2.0 (MPL-2.0)](LICENSE)
+
+---
+
+## v0.2.0
+
+**Tag:** `v0.2.0`  
+**PyPI / import name (that release):** `emerald_utils` — use **v0.2.1+** (`gemstone_utils`) for the renamed package.
 
 ### Overview
 
@@ -53,7 +103,6 @@ pip install https://github.com/cdbunch72/emerald_utils/releases/download/v0.2.0/
 [Mozilla Public License 2.0 (MPL-2.0)](LICENSE)
 
 ---
-
 
 ## v0.1.0
 
