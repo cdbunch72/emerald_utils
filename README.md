@@ -15,7 +15,7 @@ The package is licensed under the **MPL‑2.0**, allowing use in both open‑sou
 - Minimal, dependency‑light design
 
 ### 🧩 Encrypted fields
-- `$A256GCM$keyid$base64` encrypted‑field format
+- `$A256GCM$keyid$base64(json)$base64(blob)` encrypted‑field format (algorithm parameters + ciphertext)
 - `KeyContext` (`keyid`, `key`, `alg`) in `gemstone_utils.types`
 - `encrypt_string()` and `decrypt_string()` helpers in `gemstone_utils.encrypted_fields`
 
@@ -35,7 +35,7 @@ Supports:
 - `file:` — read from filesystem
 - `secret:` — systemd / container secret directories
 - pluggable backends (`sqlexp:`, `azexp:`) enabled by explicitly importing plugin modules
-- `$A256GCM$keyid$base64` encrypted values (requires `secrets_resolver.set_keyctx_resolver`)
+- `$A256GCM$keyid$base64(json)$base64(blob)` encrypted values (requires `secrets_resolver.set_keyctx_resolver`)
 
 Not intended to be the final vault/meta‑manager.
 
@@ -159,8 +159,8 @@ Fetches from Azure Key Vault. Enabled by importing
 Install `gemstone_utils[azure]` and authenticate with `DefaultAzureCredential`.
 Use `azexp_backend.set_azexp_credential(...)` to override credentials.
 
-### `$A256GCM$keyid$base64`
-Automatically decrypted using `secrets_resolver.set_keyctx_resolver` (separate from `EncryptedString.set_keyctx_resolver`).
+### Encrypted field values (`$A256GCM$…`)
+Values use the wire form `$A256GCM$<keyid>$<base64(json)>$<base64(blob)>`: URL-safe base64 of a JSON object for per-algorithm parameters (currently `{}` for `A256GCM`), then URL-safe base64 of the ciphertext blob. Automatically decrypted using `secrets_resolver.set_keyctx_resolver` (separate from `EncryptedString.set_keyctx_resolver`).
 
 ---
 

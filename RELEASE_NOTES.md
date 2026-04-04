@@ -1,6 +1,46 @@
 # gemstone_utils release notes
 
-## v0.2.1 (current)
+## Pre-release naming (gemstone_utils)
+
+Pre-release versions follow **[PEP 440](https://packaging.python.org/en/latest/specifications/version-specifiers/)** ordering (`dev` &lt; `a` &lt; `b` &lt; `rc` &lt; final). For **this project**, the qualifiers mean:
+
+- **`dev` (e.g. `0.3.0.dev0`):** Development on the main integration line; not a promise that every commit is green. Intended for contributors and early git installs, not as a stability guarantee.
+- **`a` (alpha, e.g. `0.3.0a1`):** New features and API changes are still allowed. The tree is expected to **build**, and **happy-path tests** pass under normal CI conditions—not a promise of production readiness.
+- **`b` (beta, e.g. `0.3.0b1`):** **API stable** for that line; suitable for **real-world integration** testing and feedback. Further changes should be fixes and polish, not redesign.
+- **`rc` (release candidate, e.g. `0.3.0rc1`):** Treated as **release-ready** pending last checks; **feature freeze** except for regressions, docs, and blockers. If nothing new surfaces, the final release matches the RC artifact.
+
+**Releases before 1.0** may skip stages (for example a minor may go straight from `0.2.x` to `0.3.0` without publishing an alpha or beta) when the change set is small.
+
+---
+
+## v0.3.0.dev0 (in development)
+
+**Tag:** *(not yet published)*  
+**PyPI:** install from a git checkout or sdist built locally; version string is `0.3.0.dev0`.
+
+### Overview
+
+Development toward **v0.3.0**. This entry is updated incrementally until the stable `v0.3.0` release.
+
+### Encrypted field wire format (incremental)
+
+- **New canonical form (five `$`-separated segments):** `$A256GCM$<keyid>$<params_b64>$<blob_b64>`.
+  - `<params_b64>` is URL-safe base64 (same alphabet as the ciphertext segment) of **UTF-8 JSON** encoding a single **JSON object** of algorithm parameters. For **`A256GCM`** today, writers emit **`{}`** (empty object). The segment is reserved for future algorithms or optional nonce/AAD-style metadata without changing the overall framing.
+  - `<blob_b64>` is unchanged from v0.2.x: the opaque ciphertext blob produced by `encrypt_with_alg` (for `A256GCM`, nonce + ciphertext as today).
+- **Legacy four-part strings** (`$A256GCM$<keyid>$<blob_b64>`) are still **accepted** for decrypt and for parsing; reading them emits a **`DeprecationWarning`**. They are **deprecated** in v0.3.x and **scheduled for removal in v0.9.0** (before **1.0**). New writes use the five-part form only.
+- **Migration:** Re-encrypting stored fields during a **key rotation** on gemstone_utils **≥ 0.3.0** replaces legacy strings with the new form.
+
+### API changes (incremental)
+
+- **`parse_encrypted_field(value)`** now returns a **4-tuple** `(alg_id, keyid, params, blob)` where `params` is a `dict` (empty for legacy four-part values).
+
+### Requirements
+
+Unchanged from v0.2.1 unless noted later in this section.
+
+---
+
+## v0.2.1 (latest stable)
 
 **Tag:** `v0.2.1`
 

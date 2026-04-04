@@ -88,6 +88,6 @@ class EncryptedString(TypeDecorator):
         if value is None:
             return None
 
-        _, keyid, _ = parse_encrypted_field(value)
+        _, keyid, _, _ = parse_encrypted_field(value)
         keyctx = self._resolve_keyctx(keyid)
         return LazySecret(value, keyctx)

@@ -39,7 +39,7 @@ def _resolve_keyctx_for_ciphertext(value: str) -> KeyContext:
     if _keyctx_resolver is None:
         raise RuntimeError("set_keyctx_resolver(...) must be called before resolving encrypted secrets")
 
-    _, keyid, _ = parse_encrypted_field(value)
+    _, keyid, _, _ = parse_encrypted_field(value)
     return _keyctx_resolver(keyid)
 
 
