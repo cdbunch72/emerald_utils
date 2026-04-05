@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
-from gemstone_utils.crypto import decrypt_with_alg, encrypt_with_alg
+from gemstone_utils.crypto import decrypt_alg, encrypt_alg
 from gemstone_utils.experimental.secrets_resolver import resolve_secret
 from gemstone_utils.types import KeyContext, KeyRecord
 
@@ -84,8 +84,8 @@ def make_kek_check_record(kek: bytes, alg: str = "A256GCM") -> KeyRecord:
     if CHECK_PLAINTEXT is None:
         raise RuntimeError("key_mgmt.init() must be called before use")
 
-    blob = encrypt_with_alg(alg, kek, CHECK_PLAINTEXT)
-    return KeyRecord(keyid=0, alg=alg, encrypted_key=blob)
+    blob, sym_params = encrypt_alg(alg, kek, CHECK_PLAINTEXT, None)
+    return KeyRecord(keyid=0, alg=alg, encrypted_key=blob, params=sym_params)
 
 
 def verify_kek(
@@ -104,7 +104,7 @@ def verify_kek(
         raise RuntimeError("key_mgmt.init() must be called before use")
 
     try:
-        pt = decrypt_with_alg(record.alg, kek, record.encrypted_key)
+        pt = decrypt_alg(record.alg, kek, record.encrypted_key, record.params)
     except Exception:
         pt = None
 
@@ -126,13 +126,13 @@ def unwrap_key(kek: bytes, record: KeyRecord) -> bytes:
     """Decrypt the key using the KEK and the record's alg."""
     if record.keyid == 0:
         raise ValueError("unwrap_key() called on KEK-check record")
-    return decrypt_with_alg(record.alg, kek, record.encrypted_key)
+    return decrypt_alg(record.alg, kek, record.encrypted_key, record.params)
 
 
 def wrap_key(kek: bytes, key: bytes, alg: str = "A256GCM") -> KeyRecord:
     """Encrypt a key using the KEK and return a KeyRecord (caller sets keyid)."""
-    blob = encrypt_with_alg(alg, kek, key)
-    return KeyRecord(keyid=-1, alg=alg, encrypted_key=blob)
+    blob, sym_params = encrypt_alg(alg, kek, key, None)
+    return KeyRecord(keyid=-1, alg=alg, encrypted_key=blob, params=sym_params)
 
 
 def load_keyctx(kek: bytes, record: KeyRecord) -> KeyContext:
@@ -215,13 +215,14 @@ def reencrypt_keys(
 
         key = unwrap_key(old_kek, rec)
         alg = new_alg or rec.alg
-        new_blob = encrypt_with_alg(alg, new_kek, key)
+        new_blob, new_params = encrypt_alg(alg, new_kek, key, None)
 
         updated.append(
             KeyRecord(
                 keyid=rec.keyid,
                 alg=alg,
                 encrypted_key=new_blob,
+                params=new_params,
             )
         )
 

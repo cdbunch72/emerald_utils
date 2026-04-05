@@ -8,14 +8,25 @@ import json
 import warnings
 from typing import Any, Dict, Optional, Tuple
 
-from .crypto import encrypt_with_alg, decrypt_with_alg, b64encode, b64decode
+from .crypto import (
+    SUPPORTED_SYM_ALGS,
+    SYM_ALG_REGISTRY,
+    b64decode,
+    b64encode,
+    decrypt_alg,
+    encrypt_alg,
+    is_supported_sym_alg,
+)
 from .types import KeyContext
-
-ALG_ID = "A256GCM"  # field-level algorithm id
 
 
 def is_encrypted_prefix(value: str) -> bool:
-    return isinstance(value, str) and value.startswith(f"${ALG_ID}$")
+    if not isinstance(value, str) or not value.startswith("$"):
+        return False
+    parts = value.split("$")
+    if len(parts) < 4 or parts[0] != "":
+        return False
+    return parts[1] in SUPPORTED_SYM_ALGS
 
 
 def _params_json_bytes(params: Dict[str, Any]) -> bytes:
@@ -38,12 +49,15 @@ def _decode_params_segment(segment: str) -> Dict[str, Any]:
 
 
 def format_encrypted_field(
+    alg: str,
     keyid: int,
     blob: bytes,
     params: Optional[Dict[str, Any]] = None,
 ) -> str:
+    if not is_supported_sym_alg(alg):
+        raise ValueError(f"Unsupported symmetric alg: {alg}")
     p = {} if params is None else params
-    return f"${ALG_ID}${keyid}${_encode_params_segment(p)}${b64encode(blob)}"
+    return f"${alg}${keyid}${_encode_params_segment(p)}${b64encode(blob)}"
 
 
 def parse_encrypted_field(value: str) -> Tuple[str, int, Dict[str, Any], bytes]:
@@ -75,15 +89,19 @@ def parse_encrypted_field(value: str) -> Tuple[str, int, Dict[str, Any], bytes]:
 
 
 def _validate_alg_params(alg_id: str, params: Dict[str, Any]) -> None:
-    if alg_id == "A256GCM" and params:
-        raise ValueError(f"A256GCM does not accept algorithm parameters (got {params!r})")
+    spec = SYM_ALG_REGISTRY.get(alg_id)
+    if spec is None:
+        raise ValueError(f"unsupported algorithm: {alg_id}")
+    spec.validate_sym_params(params)
 
 
 def encrypt_string(plaintext: Optional[str], keyctx: KeyContext) -> Optional[str]:
     if plaintext is None:
         return None
-    blob = encrypt_with_alg(keyctx.alg, keyctx.key, plaintext.encode("utf-8"))
-    return format_encrypted_field(keyctx.keyid, blob, {})
+    blob, out_params = encrypt_alg(
+        keyctx.alg, keyctx.key, plaintext.encode("utf-8"), None
+    )
+    return format_encrypted_field(keyctx.alg, keyctx.keyid, blob, out_params)
 
 
 def decrypt_string(value: Optional[str], keyctx: KeyContext) -> Optional[str]:
@@ -99,4 +117,4 @@ def decrypt_string(value: Optional[str], keyctx: KeyContext) -> Optional[str]:
 
     _validate_alg_params(alg_id, params)
 
-    return decrypt_with_alg(keyctx.alg, keyctx.key, blob).decode("utf-8")
+    return decrypt_alg(keyctx.alg, keyctx.key, blob, params).decode("utf-8")

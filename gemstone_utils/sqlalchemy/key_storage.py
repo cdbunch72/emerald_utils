@@ -6,23 +6,27 @@ from __future__ import annotations
 
 import json
 from collections import OrderedDict
-from typing import Callable, Iterable, Iterator, Mapping, Optional
+from datetime import datetime, timezone
+from typing import Callable, Iterable, Iterator, Optional
 
-from sqlalchemy import Column, Integer, Select, Text, select
+from sqlalchemy import Boolean, Column, DateTime, Integer, Select, Text, select, update
 from sqlalchemy.orm import Session
 
-from gemstone_utils.crypto import encrypt_with_alg
+from gemstone_utils.crypto import encrypt_alg, is_supported_sym_alg
 from gemstone_utils.db import GemstoneDB, get_session as default_get_session
 from gemstone_utils.encrypted_fields import format_encrypted_field, parse_encrypted_field
 from gemstone_utils.key_mgmt import (
     derive_kek,
-    load_keyctx,
     load_passphrase as default_load_passphrase,
     recommended_kdf_params,
     rotate_kek,
     unwrap_key,
 )
 from gemstone_utils.types import KeyContext, KeyRecord
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class GemstoneKeyKdf(GemstoneDB):
@@ -36,6 +40,8 @@ class GemstoneKeyKdf(GemstoneDB):
 
     key_id = Column(Integer, primary_key=True)
     params = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
 class GemstoneKeyRecord(GemstoneDB):
@@ -43,12 +49,17 @@ class GemstoneKeyRecord(GemstoneDB):
     Wrapped key material (KEK canary at ``key_id == 0``, DEKs at ``key_id >= 1``).
     ``wrapped`` uses the same five-part wire format as encrypted columns; the
     segment ``keyid`` is the KEK slot (row in :class:`GemstoneKeyKdf`), not this PK.
+    ``data_alg`` is the algorithm for application field encryption (``KeyContext.alg``).
     """
 
     __tablename__ = "gemstone_key_record"
 
     key_id = Column(Integer, primary_key=True)
     wrapped = Column(Text, nullable=False)
+    data_alg = Column(Text, nullable=False, default="A256GCM")
+    is_active = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
 
 
 def new_kdf_params(salt: Optional[bytes] = None) -> dict:
@@ -67,19 +78,23 @@ def wire_wrap(
     alg: str = "A256GCM",
 ) -> str:
     """Wrap key material as the standard encrypted-field wire string."""
-    blob = encrypt_with_alg(alg, kek, plaintext_key_material)
-    return format_encrypted_field(wrap_key_id, blob, {})
+    blob, sym_params = encrypt_alg(alg, kek, plaintext_key_material, None)
+    return format_encrypted_field(alg, wrap_key_id, blob, sym_params)
 
 
 def wire_to_keyrecord(logical_key_id: int, wire: str) -> KeyRecord:
     """Parse a stored wire string into a :class:`~gemstone_utils.types.KeyRecord`."""
-    alg_id, _segment_keyid, _params, blob = parse_encrypted_field(wire)
-    return KeyRecord(keyid=logical_key_id, alg=alg_id, encrypted_key=blob)
+    alg_id, _segment_keyid, params, blob = parse_encrypted_field(wire)
+    return KeyRecord(
+        keyid=logical_key_id, alg=alg_id, encrypted_key=blob, params=params
+    )
 
 
 def keyrecord_to_wire(record: KeyRecord, wrap_key_id: int) -> str:
     """Serialize a :class:`~gemstone_utils.types.KeyRecord` to wire form."""
-    return format_encrypted_field(wrap_key_id, record.encrypted_key, {})
+    return format_encrypted_field(
+        record.alg, wrap_key_id, record.encrypted_key, record.params
+    )
 
 
 def unwrap_stored_key(kek: bytes, logical_key_id: int, wire: str) -> bytes:
@@ -103,10 +118,16 @@ def get_kdf_params(session: Session, key_id: int) -> dict:
 def set_kdf_params(session: Session, key_id: int, params: dict) -> None:
     text = json.dumps(params, sort_keys=True, separators=(",", ":"))
     row = session.get(GemstoneKeyKdf, key_id)
+    now = _utcnow()
     if row is None:
-        session.add(GemstoneKeyKdf(key_id=key_id, params=text))
-    else:
+        session.add(
+            GemstoneKeyKdf(
+                key_id=key_id, params=text, created_at=now, updated_at=now
+            )
+        )
+    elif row.params != text:
         row.params = text
+        row.updated_at = now
 
 
 def get_wrapped(session: Session, logical_key_id: int) -> str:
@@ -128,13 +149,45 @@ def iter_wrapped_rows(
     yield from session.scalars(stmt)
 
 
-def put_wrapped_batch(session: Session, key_id_to_wire: Mapping[int, str]) -> None:
-    for key_id, wire in key_id_to_wire.items():
-        row = session.get(GemstoneKeyRecord, key_id)
-        if row is None:
-            session.add(GemstoneKeyRecord(key_id=key_id, wrapped=wire))
-        else:
-            row.wrapped = wire
+def put_keyrecord(
+    session: Session,
+    *,
+    key_id: int,
+    wrapped: str,
+    data_alg: str = "A256GCM",
+    is_active: bool = False,
+) -> None:
+    """
+    Insert a single key record (bootstrap canary or new DEK row on rotation).
+
+    Raises if ``key_id`` already exists. When ``is_active`` is True for a DEK
+    (``key_id >= 1``), clears ``is_active`` on all other DEK rows in this session.
+    """
+    if not is_supported_sym_alg(data_alg):
+        raise ValueError(f"Unsupported symmetric alg for data_alg: {data_alg!r}")
+    if session.get(GemstoneKeyRecord, key_id) is not None:
+        raise ValueError(f"key record already exists for key_id={key_id}")
+    if key_id == 0 and is_active:
+        raise ValueError("canary key_id=0 cannot be marked active")
+
+    now = _utcnow()
+    if is_active and key_id >= 1:
+        session.execute(
+            update(GemstoneKeyRecord)
+            .where(GemstoneKeyRecord.key_id >= 1)
+            .values(is_active=False)
+        )
+
+    session.add(
+        GemstoneKeyRecord(
+            key_id=key_id,
+            wrapped=wrapped,
+            data_alg=data_alg,
+            is_active=is_active,
+            created_at=now,
+            updated_at=now,
+        )
+    )
 
 
 def rewrap_key_records(
@@ -171,14 +224,16 @@ def rewrap_key_records(
             )
         records.append(wire_to_keyrecord(row.key_id, row.wrapped))
 
-    new_check, updated = rotate_kek(
-        old_kek, new_kek, records, new_alg=new_alg
-    )
+    new_check, updated = rotate_kek(old_kek, new_kek, records, new_alg=new_alg)
 
+    touch = _utcnow()
     by_id = {r.key_id: r for r in rows}
     by_id[0].wrapped = keyrecord_to_wire(new_check, new_wrap_key_id)
+    by_id[0].updated_at = touch
     for rec in updated:
-        by_id[rec.keyid].wrapped = keyrecord_to_wire(rec, new_wrap_key_id)
+        r = by_id[rec.keyid]
+        r.wrapped = keyrecord_to_wire(rec, new_wrap_key_id)
+        r.updated_at = touch
 
     session.flush()
 
@@ -193,7 +248,8 @@ def make_keyctx_resolver(
     Build a resolver suitable for :meth:`~gemstone_utils.sqlalchemy.encrypted_type.EncryptedString.set_keyctx_resolver`.
 
     Loads the DEK row by logical ``keyid``, derives the KEK from persisted KDF
-    params for the wire's segment keyid, and returns :class:`~gemstone_utils.types.KeyContext`.
+    params for the wire's segment keyid, and returns :class:`~gemstone_utils.types.KeyContext`
+    with ``alg`` from the row's ``data_alg``.
 
     When ``max_cache_size > 0``, resolved contexts are cached in-process (best-effort).
     """
@@ -229,7 +285,8 @@ def make_keyctx_resolver(
             passphrase = load_passphrase()
             kek = derive_kek(passphrase, kdf_params)
             rec = wire_to_keyrecord(dk_keyid, row.wrapped)
-            ctx = load_keyctx(kek, rec)
+            key = unwrap_key(kek, rec)
+            ctx = KeyContext(keyid=dk_keyid, key=key, alg=row.data_alg)
         finally:
             session.close()
 

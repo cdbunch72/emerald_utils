@@ -9,7 +9,8 @@ The package is licensed under the **MPL‑2.0**, allowing use in both open‑sou
 ## Features
 
 ### 🔐 Cryptography core
-- AES‑256‑GCM encryption and decryption
+- Registered symmetric algorithms (`SYM_ALG_REGISTRY`, `SUPPORTED_SYM_ALGS`) with **`encrypt_alg` / `decrypt_alg`** (optional per‑algorithm params; encrypt returns **`(ciphertext, updated_params)`**)
+- **`generate_key_by_alg(alg)`** for DEK-sized random bytes from the registry
 - PBKDF2‑HMAC‑SHA256 key derivation (no extra dependencies)
 - URL‑safe base64 encoding helpers
 - Minimal, dependency‑light design
@@ -33,11 +34,12 @@ The package is licensed under the **MPL‑2.0**, allowing use in both open‑sou
 - **`gemstone_utils.key_mgmt.kdf`** — documented contract (`RecommendedKdfParamsFn`, `HasKdfRegistryName`) and per‑algorithm modules (e.g. **`kdf.pbkdf2`**: `NAME`, `pbkdf2_params`, `recommended_pbkdf2_params`) when you pin a specific algorithm instead of the default.
 
 ### 🔑 SQL key storage (`sqlalchemy.key_storage`)
-- Tables `gemstone_key_kdf` (persisted KDF JSON per KEK slot) and `gemstone_key_record` (wrapped keys in the same five‑part wire format as encrypted columns)
+- Tables `gemstone_key_kdf` (persisted KDF JSON per KEK slot + timestamps) and `gemstone_key_record` (wrapped keys in the same five‑part wire format as encrypted columns, plus **`data_alg`**, **`is_active`**, **`created_at`**, **`updated_at`**)
 - Logical `key_id` **0** holds the KEK **canary**; **1+** hold **DEKs** referenced by `EncryptedString` ciphertexts. The **segment** `keyid` inside each wire string is the KEK slot (foreign meaning: row in `gemstone_key_kdf`), not the DEK’s logical id.
 - Bootstrap persisted KDF rows with **`new_kdf_params()`** (alias of **`recommended_kdf_params`**) or your own params dict; **`salt` must always be stored** in JSON for PBKDF2 rows.
-- `make_keyctx_resolver()` wires `EncryptedString.set_keyctx_resolver()` to `get_session()` + persisted rows + `derive_kek` / `load_keyctx`.
-- `rewrap_key_records()` performs `rotate_kek`‑style batch re‑wrap inside a transaction you open with `with session.begin(): ...`.
+- **`put_keyrecord()`** is the supported way to insert canary and DEK rows (validates **`data_alg`**, maintains a single active DEK when **`is_active=True`**, sets timestamps).
+- `make_keyctx_resolver()` wires `EncryptedString.set_keyctx_resolver()` to `get_session()` + persisted rows + `derive_kek` / unwrap; **`KeyContext.alg`** comes from the row’s **`data_alg`** (field algorithm), not the wrap algorithm inside `wrapped`.
+- `rewrap_key_records()` performs `rotate_kek`‑style batch re‑wrap inside a transaction you open with `with session.begin(): ...` and bumps **`updated_at`** on touched rows.
 
 Back up `gemstone_key_kdf` with the same care as `gemstone_key_record`: salt and iteration counts are required to recover KEKs from the vault passphrase.
 
@@ -120,17 +122,16 @@ EncryptedString.set_keyctx_resolver(resolve_enc_keyctx)
 ### 1b. Optional: persisted keys + `EncryptedString` resolver
 
 ```python
-import os
-
 import gemstone_utils.sqlalchemy.key_storage  # registers ORM tables on GemstoneDB
+from gemstone_utils.crypto import generate_key_by_alg
 from gemstone_utils.db import get_session, init_db
 from gemstone_utils.key_mgmt import derive_kek, init as key_mgmt_init, make_kek_check_record
 from gemstone_utils.sqlalchemy.encrypted_type import EncryptedString
 from gemstone_utils.sqlalchemy.key_storage import (
-    GemstoneKeyRecord,
     keyrecord_to_wire,
     make_keyctx_resolver,
     new_kdf_params,
+    put_keyrecord,
     set_kdf_params,
     wire_wrap,
 )
@@ -142,22 +143,25 @@ key_mgmt_init("vault_passphrase", b"constant-canary-bytes", env_allowed=True)
 passphrase = "human vault passphrase"
 kdf = new_kdf_params()
 kek = derive_kek(passphrase, kdf)
-dek = KeyContext(keyid=1, key=os.urandom(32))
+dek_material = generate_key_by_alg("A256GCM")
+dek = KeyContext(keyid=1, key=dek_material, alg="A256GCM")
 
 with get_session() as session:
     with session.begin():
         set_kdf_params(session, 1, kdf)
-        session.add(
-            GemstoneKeyRecord(
-                key_id=0,
-                wrapped=keyrecord_to_wire(make_kek_check_record(kek), 1),
-            )
+        put_keyrecord(
+            session,
+            key_id=0,
+            wrapped=keyrecord_to_wire(make_kek_check_record(kek), 1),
+            data_alg="A256GCM",
+            is_active=False,
         )
-        session.add(
-            GemstoneKeyRecord(
-                key_id=1,
-                wrapped=wire_wrap(1, kek, dek.key),
-            )
+        put_keyrecord(
+            session,
+            key_id=1,
+            wrapped=wire_wrap(1, kek, dek.key),
+            data_alg="A256GCM",
+            is_active=True,
         )
 
 EncryptedString.set_current_keyctx(dek)

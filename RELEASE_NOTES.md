@@ -24,15 +24,20 @@ Development toward **v0.3.0**. This entry is updated incrementally until the sta
 
 ### Encrypted field wire format (incremental)
 
-- **New canonical form (five `$`-separated segments):** `$A256GCM$<keyid>$<params_b64>$<blob_b64>`.
+- **New canonical form (five `$`-separated segments):** `$<alg>$<keyid>$<params_b64>$<blob_b64>` where **`<alg>`** is a registered symmetric id (today **`A256GCM`**). New writes use **`encrypt_alg`**; the first segment matches **`KeyContext.alg`**.
   - `<params_b64>` is URL-safe base64 (same alphabet as the ciphertext segment) of **UTF-8 JSON** encoding a single **JSON object** of algorithm parameters. For **`A256GCM`** today, writers emit **`{}`** (empty object). The segment is reserved for future algorithms or optional nonce/AAD-style metadata without changing the overall framing.
-  - `<blob_b64>` is unchanged from v0.2.x: the opaque ciphertext blob produced by `encrypt_with_alg` (for `A256GCM`, nonce + ciphertext as today).
+  - `<blob_b64>` is unchanged from v0.2.x: the opaque ciphertext blob produced by the registered encrypt implementation (for `A256GCM`, nonce + ciphertext as today).
 - **Legacy four-part strings** (`$A256GCM$<keyid>$<blob_b64>`) are still **accepted** for decrypt and for parsing; reading them emits a **`DeprecationWarning`**. They are **deprecated** in v0.3.x and **scheduled for removal in v0.9.0** (before **1.0**). New writes use the five-part form only.
 - **Migration:** Re-encrypting stored fields during a **key rotation** on gemstone_utils **≥ 0.3.0** replaces legacy strings with the new form.
 
 ### API changes (incremental)
 
 - **`parse_encrypted_field(value)`** now returns a **4-tuple** `(alg_id, keyid, params, blob)` where `params` is a `dict` (empty for legacy four-part values).
+- **Breaking — `gemstone_utils.crypto`:** **`SYM_ALG_REGISTRY`**, **`SUPPORTED_SYM_ALGS`**, **`is_supported_sym_alg`**, **`sym_alg_key_length`**, **`generate_key_by_alg`**, **`encrypt_alg`**, **`decrypt_alg`**. **`encrypt_alg`** returns **`(ciphertext, updated_params)`**; callers persist `updated_params` in the wire JSON segment when needed. **`encrypt_with_alg` / `decrypt_with_alg`** remain as thin helpers (ciphertext-only encrypt; empty params decrypt).
+- **Breaking — `format_encrypted_field`:** signature is **`(alg, keyid, blob, params=None)`** (algorithm id first). Previously the first argument was `keyid` and the algorithm was hardcoded to `A256GCM`.
+- **Breaking — `KeyRecord`:** adds **`params`** (`dict`, default `{}`) for the wire params segment; **`unwrap_key` / `verify_kek` / `wrap_key`** pass it through to **`decrypt_alg` / `encrypt_alg`**.
+- **Breaking — `gemstone_utils.sqlalchemy.key_storage`:** **`GemstoneKeyRecord`** adds **`data_alg`**, **`is_active`**, **`created_at`**, **`updated_at`**; **`GemstoneKeyKdf`** adds **`created_at`**, **`updated_at`**. **`put_keyrecord`** is the supported insert API; **`put_wrapped_batch`** removed. **`set_kdf_params`** and **`rewrap_key_records`** maintain timestamps. **`make_keyctx_resolver`** sets **`KeyContext.alg`** from **`row.data_alg`**. Existing databases require **`ALTER TABLE`** (or recreate); there is no Alembic bundle in this repo.
+- **`is_encrypted_prefix`:** treats any **registered** algorithm segment as encrypted (not only `A256GCM`).
 
 ### Requirements
 
@@ -50,8 +55,8 @@ Unchanged from v0.2.1 unless noted later in this section.
 ### SQL key storage and KDF defaults
 
 - **`gemstone_utils.sqlalchemy.key_storage`:** Models `GemstoneKeyKdf` and `GemstoneKeyRecord` (tables `gemstone_key_kdf`, `gemstone_key_record`). Logical `key_id` **0** is the KEK canary; **1+** are DEKs. The wire segment `keyid` identifies the KEK slot (KDF row), not the DEK’s primary key.
-- **Helpers:** `new_kdf_params` (wrapper around `recommended_kdf_params`), `wire_wrap`, `wire_to_keyrecord`, `keyrecord_to_wire`, `unwrap_stored_key`, `set_kdf_params` / `get_kdf_params`, `rewrap_key_records`, `make_keyctx_resolver`.
-- **`crypto`:** `derive_pbkdf2_hmac_sha256` (low-level primitive) and `DEFAULT_PBKDF2_ITERATIONS_STRONG`.
+- **Helpers:** `new_kdf_params` (wrapper around `recommended_kdf_params`), `wire_wrap`, `wire_to_keyrecord`, `keyrecord_to_wire`, `unwrap_stored_key`, `set_kdf_params` / `get_kdf_params`, `put_keyrecord`, `rewrap_key_records`, `make_keyctx_resolver`.
+- **`crypto`:** `derive_pbkdf2_hmac_sha256` (low-level primitive), `DEFAULT_PBKDF2_ITERATIONS_STRONG`, and symmetric registry / `encrypt_alg` / `generate_key_by_alg` as above.
 
 ### Development
 
