@@ -15,12 +15,21 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 # ---- KEK derivation ---------------------------------------------------------
 
+# OWASP-style order of magnitude for PBKDF2-HMAC-SHA256 when params omit iterations
+# (used by key_mgmt persisted KDF defaults).
+DEFAULT_PBKDF2_ITERATIONS_STRONG = 600_000
 
-def derive_kek_from_passphrase(
+
+def derive_pbkdf2_hmac_sha256(
     passphrase: str,
     salt: bytes,
-    iterations: int = 200_000,
+    *,
+    iterations: int,
+    length: int = 32,
 ) -> bytes:
+    """
+    Derive key bytes using cryptography's PBKDF2HMAC (SHA-256).
+    """
     if not isinstance(passphrase, str):
         raise TypeError("passphrase must be a str")
     if not isinstance(salt, (bytes, bytearray)):
@@ -28,11 +37,21 @@ def derive_kek_from_passphrase(
 
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
-        length=32,
+        length=length,
         salt=salt,
         iterations=iterations,
     )
     return kdf.derive(passphrase.encode("utf-8"))
+
+
+def derive_kek_from_passphrase(
+    passphrase: str,
+    salt: bytes,
+    iterations: int = 200_000,
+) -> bytes:
+    return derive_pbkdf2_hmac_sha256(
+        passphrase, salt, iterations=iterations, length=32
+    )
 
 
 # ---- AES-GCM primitives -----------------------------------------------------

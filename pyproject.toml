@@ -23,6 +23,12 @@ azure = [
     "azure-identity>=1.14",
     "azure-keyvault-secrets>=4.7",
 ]
+dev = [
+    "pytest>=7.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/cdbunch72/gemstone_utils"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -8,7 +8,13 @@ from typing import Optional, Iterable, Callable, Dict, Any
 
 from gemstone_utils.experimental.secrets_resolver import resolve_secret
 from .types import KeyRecord, KeyContext
-from .crypto import encrypt_with_alg, decrypt_with_alg
+from .crypto import (
+    DEFAULT_PBKDF2_ITERATIONS_STRONG,
+    b64decode,
+    decrypt_with_alg,
+    derive_pbkdf2_hmac_sha256,
+    encrypt_with_alg,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +68,11 @@ class KEKVerificationError(ValueError):
 
 _KDF_REGISTRY: Dict[str, Callable[[str, Dict[str, Any]], bytes]] = {}
 
+# Persisted JSON uses this value for the "kdf" field (gemstone_key_kdf.params).
+KDF_NAME_PBKDF2_HMAC_SHA256 = "pbkdf2-hmac-sha256"
+
+DEFAULT_PBKDF2_DERIVED_KEY_LENGTH = 32
+
 
 def register_kdf(name: str):
     def decorator(fn):
@@ -83,6 +94,31 @@ def derive_kek(passphrase: str, params: dict) -> bytes:
         raise ValueError(f"Unsupported KDF: {kdf_name}")
 
     return fn(passphrase, params)
+
+
+@register_kdf(KDF_NAME_PBKDF2_HMAC_SHA256)
+def _derive_kek_pbkdf2_hmac_sha256(passphrase: str, params: Dict[str, Any]) -> bytes:
+    """
+    PBKDF2-HMAC-SHA256 via cryptography. Requires persisted ``salt`` (url-safe
+    base64). ``iterations`` / ``length`` default to strong library constants
+    when omitted (salt is never defaulted).
+    """
+    salt_b64 = params.get("salt")
+    if not salt_b64 or not isinstance(salt_b64, str):
+        raise ValueError("KDF params require non-empty 'salt' (url-safe base64 string)")
+
+    salt = b64decode(salt_b64)
+    iterations = int(params.get("iterations", DEFAULT_PBKDF2_ITERATIONS_STRONG))
+    length = int(params.get("length", DEFAULT_PBKDF2_DERIVED_KEY_LENGTH))
+    hash_name = params.get("hash", "sha256")
+    if str(hash_name).lower() != "sha256":
+        raise ValueError(
+            f"Unsupported PBKDF2 hash {hash_name!r} (only 'sha256' is supported)"
+        )
+
+    return derive_pbkdf2_hmac_sha256(
+        passphrase, salt, iterations=iterations, length=length
+    )
 
 
 # ---------------------------------------------------------------------------
