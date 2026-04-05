@@ -8,14 +8,13 @@ import os
 import pytest
 
 import gemstone_utils.sqlalchemy.key_storage  # noqa: F401 — register ORM models
-from gemstone_utils.crypto import b64encode
 from gemstone_utils.db import get_session, init_db
 from gemstone_utils.key_mgmt import (
-    KDF_NAME_PBKDF2_HMAC_SHA256,
     derive_and_verify_kek,
     derive_kek,
     init as key_mgmt_init,
     make_kek_check_record,
+    pbkdf2_hmac_sha256_params,
 )
 from gemstone_utils.sqlalchemy.key_storage import (
     GemstoneKeyRecord,
@@ -42,13 +41,7 @@ def passphrase():
 
 def _fast_kdf_params() -> dict:
     """Low iteration count for fast tests (production should use new_pbkdf2_kdf_params())."""
-    return {
-        "kdf": KDF_NAME_PBKDF2_HMAC_SHA256,
-        "hash": "sha256",
-        "salt": b64encode(os.urandom(16)),
-        "iterations": 10_000,
-        "length": 32,
-    }
+    return pbkdf2_hmac_sha256_params(os.urandom(16), iterations=10_000)
 
 
 @pytest.fixture
@@ -139,6 +132,7 @@ def test_keyctx_resolver_rejects_zero():
 
 def test_new_pbkdf2_kdf_params_strong_defaults():
     from gemstone_utils.crypto import DEFAULT_PBKDF2_ITERATIONS_STRONG
+    from gemstone_utils.key_mgmt import KDF_NAME_PBKDF2_HMAC_SHA256
 
     p = new_pbkdf2_kdf_params()
     assert p["kdf"] == KDF_NAME_PBKDF2_HMAC_SHA256

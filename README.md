@@ -87,7 +87,7 @@ pip install gemstone_utils-0.2.0.tar.gz
 ### 1. Derive a data key and wire `EncryptedString`
 
 ```python
-from gemstone_utils.crypto import derive_kek_from_passphrase
+from gemstone_utils.key_mgmt import derive_kek, pbkdf2_hmac_sha256_params
 from gemstone_utils.types import KeyContext
 from gemstone_utils.sqlalchemy.encrypted_type import EncryptedString
 from gemstone_utils.experimental.secrets_resolver import resolve_secret
@@ -95,7 +95,7 @@ from gemstone_utils.experimental.secrets_resolver import resolve_secret
 passphrase = resolve_secret("env:APP_DK_PASSPHRASE")
 salt = resolve_secret("env:APP_DK_SALT").encode("utf-8")
 
-dk = derive_kek_from_passphrase(passphrase, salt)
+dk = derive_kek(passphrase, pbkdf2_hmac_sha256_params(salt))
 ctx = KeyContext(keyid=1, key=dk)
 
 EncryptedString.set_current_keyctx(ctx)

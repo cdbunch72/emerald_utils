@@ -44,16 +44,6 @@ def derive_pbkdf2_hmac_sha256(
     return kdf.derive(passphrase.encode("utf-8"))
 
 
-def derive_kek_from_passphrase(
-    passphrase: str,
-    salt: bytes,
-    iterations: int = 200_000,
-) -> bytes:
-    return derive_pbkdf2_hmac_sha256(
-        passphrase, salt, iterations=iterations, length=32
-    )
-
-
 # ---- AES-GCM primitives -----------------------------------------------------
 
 

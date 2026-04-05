@@ -11,6 +11,7 @@ from .types import KeyRecord, KeyContext
 from .crypto import (
     DEFAULT_PBKDF2_ITERATIONS_STRONG,
     b64decode,
+    b64encode,
     decrypt_with_alg,
     derive_pbkdf2_hmac_sha256,
     encrypt_with_alg,
@@ -94,6 +95,28 @@ def derive_kek(passphrase: str, params: dict) -> bytes:
         raise ValueError(f"Unsupported KDF: {kdf_name}")
 
     return fn(passphrase, params)
+
+
+def pbkdf2_hmac_sha256_params(
+    salt: bytes,
+    *,
+    iterations: int = 200_000,
+    length: int = DEFAULT_PBKDF2_DERIVED_KEY_LENGTH,
+) -> Dict[str, Any]:
+    """
+    Build a ``params`` dict for :func:`derive_kek` using the registered
+    :data:`KDF_NAME_PBKDF2_HMAC_SHA256` implementation. Persist or pass the
+    returned dict to ``derive_kek``; do not duplicate KDF wiring elsewhere.
+    """
+    if not isinstance(salt, (bytes, bytearray)):
+        raise TypeError("salt must be bytes")
+    return {
+        "kdf": KDF_NAME_PBKDF2_HMAC_SHA256,
+        "hash": "sha256",
+        "salt": b64encode(bytes(salt)),
+        "iterations": iterations,
+        "length": length,
+    }
 
 
 @register_kdf(KDF_NAME_PBKDF2_HMAC_SHA256)

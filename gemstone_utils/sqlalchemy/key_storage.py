@@ -12,15 +12,15 @@ from typing import Callable, Iterable, Iterator, Mapping, Optional
 from sqlalchemy import Column, Integer, Select, Text, select
 from sqlalchemy.orm import Session
 
-from gemstone_utils.crypto import b64encode, encrypt_with_alg
+from gemstone_utils.crypto import encrypt_with_alg
 from gemstone_utils.db import GemstoneDB, get_session as default_get_session
 from gemstone_utils.encrypted_fields import format_encrypted_field, parse_encrypted_field
 from gemstone_utils.key_mgmt import (
     DEFAULT_PBKDF2_ITERATIONS_STRONG,
-    KDF_NAME_PBKDF2_HMAC_SHA256,
     derive_kek,
     load_keyctx,
     load_passphrase as default_load_passphrase,
+    pbkdf2_hmac_sha256_params,
     rotate_kek,
     unwrap_key,
 )
@@ -60,13 +60,9 @@ def new_pbkdf2_kdf_params(salt: Optional[bytes] = None) -> dict:
     """
     if salt is None:
         salt = os.urandom(16)
-    return {
-        "kdf": KDF_NAME_PBKDF2_HMAC_SHA256,
-        "hash": "sha256",
-        "salt": b64encode(salt),
-        "iterations": DEFAULT_PBKDF2_ITERATIONS_STRONG,
-        "length": 32,
-    }
+    return pbkdf2_hmac_sha256_params(
+        salt, iterations=DEFAULT_PBKDF2_ITERATIONS_STRONG, length=32
+    )
 
 
 def wire_wrap(
