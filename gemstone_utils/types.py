@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from gemstone_utils.crypto import recommended_data_alg
 
@@ -16,8 +16,12 @@ class KeyRecord:
 
     Applications construct this from their own storage layer.
     ``params`` matches the JSON params segment in the encrypted-field wire format.
+
+    ``keyid`` is the logical DEK id (canonical UUID string), or ``None`` for a
+    KEK-check (canary) blob that is not a DEK.
     """
-    keyid: int
+
+    keyid: Optional[str]
     alg: str
     encrypted_key: bytes
     params: Dict[str, Any] = field(default_factory=dict)
@@ -26,8 +30,11 @@ class KeyRecord:
 @dataclass
 class KeyContext:
     """
-    Active key context for field encryption (data key + keyid + algorithm).
+    Active key context for field encryption (data key + key id + algorithm).
+
+    ``keyid`` is a canonical UUID string (segment 2 in encrypted-field wire format).
     """
-    keyid: int
+
+    keyid: str
     key: bytes
     alg: str = field(default_factory=recommended_data_alg)

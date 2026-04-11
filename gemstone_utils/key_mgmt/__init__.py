@@ -73,19 +73,20 @@ class KEKVerificationError(ValueError):
 
 
 # ---------------------------------------------------------------------------
-# KEK-check handling (keyid = 0)
+# KEK-check handling (KeyRecord with ``keyid is None``)
 # ---------------------------------------------------------------------------
 
 
 def make_kek_check_record(kek: bytes, alg: str = "A256GCM") -> KeyRecord:
     """
-    Create a KeyRecord(keyid=0) containing the KEK-check blob.
+    Create a :class:`~gemstone_utils.types.KeyRecord` with ``keyid is None``
+    containing the KEK-check blob (not a DEK).
     """
     if CHECK_PLAINTEXT is None:
         raise RuntimeError("key_mgmt.init() must be called before use")
 
     blob, sym_params = encrypt_alg(alg, kek, CHECK_PLAINTEXT, None)
-    return KeyRecord(keyid=0, alg=alg, encrypted_key=blob, params=sym_params)
+    return KeyRecord(keyid=None, alg=alg, encrypted_key=blob, params=sym_params)
 
 
 def verify_kek(
@@ -97,8 +98,8 @@ def verify_kek(
     Verify that the KEK decrypts the KEK-check record correctly.
     Raises KEKVerificationError with structured fields if verification fails.
     """
-    if record.keyid != 0:
-        raise ValueError("verify_kek() requires keyid=0 record")
+    if record.keyid is not None:
+        raise ValueError("verify_kek() requires a KEK-check record (keyid=None)")
 
     if CHECK_PLAINTEXT is None:
         raise RuntimeError("key_mgmt.init() must be called before use")
@@ -124,19 +125,21 @@ def verify_kek(
 
 def unwrap_key(kek: bytes, record: KeyRecord) -> bytes:
     """Decrypt the key using the KEK and the record's alg."""
-    if record.keyid == 0:
+    if record.keyid is None:
         raise ValueError("unwrap_key() called on KEK-check record")
     return decrypt_alg(record.alg, kek, record.encrypted_key, record.params)
 
 
 def wrap_key(kek: bytes, key: bytes, alg: str = "A256GCM") -> KeyRecord:
-    """Encrypt a key using the KEK and return a KeyRecord (caller sets keyid)."""
+    """Encrypt a key using the KEK; caller sets ``keyid`` on the returned record."""
     blob, sym_params = encrypt_alg(alg, kek, key, None)
-    return KeyRecord(keyid=-1, alg=alg, encrypted_key=blob, params=sym_params)
+    return KeyRecord(keyid=None, alg=alg, encrypted_key=blob, params=sym_params)
 
 
 def load_keyctx(kek: bytes, record: KeyRecord) -> KeyContext:
-    """Produce a KeyContext from a KEK + KeyRecord."""
+    """Produce a KeyContext from a KEK + KeyRecord (DEK record only)."""
+    if record.keyid is None:
+        raise ValueError("load_keyctx() requires a DEK KeyRecord (keyid set)")
     key = unwrap_key(kek, record)
     return KeyContext(keyid=record.keyid, key=key, alg=record.alg)
 
@@ -206,11 +209,12 @@ def reencrypt_keys(
     Re-encrypt all keys under a new KEK.
     If new_alg is provided, rewrap using that algorithm.
     Otherwise preserve each record's existing algorithm.
+    Skips KEK-check records (``keyid is None``).
     """
     updated = []
 
     for rec in records:
-        if rec.keyid == 0:
+        if rec.keyid is None:
             continue
 
         key = unwrap_key(old_kek, rec)

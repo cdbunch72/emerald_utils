@@ -22,7 +22,7 @@ class EncryptedString(TypeDecorator):
     SQLAlchemy TypeDecorator for encrypted text fields.
 
     - Writes always use the *current* KeyContext (set by the app).
-    - Reads parse the prefix, resolve the correct KeyContext for that keyid,
+    - Reads parse the prefix, resolve the correct KeyContext for that key id,
       and return a LazySecret that decrypts on access.
     """
 
@@ -30,7 +30,7 @@ class EncryptedString(TypeDecorator):
     cache_ok = True
 
     _current_keyctx: Optional[KeyContext] = None
-    _keyctx_resolver: Optional[Callable[[int], KeyContext]] = None
+    _keyctx_resolver: Optional[Callable[[str], KeyContext]] = None
 
     # --- configuration hooks -------------------------------------------------
 
@@ -42,9 +42,9 @@ class EncryptedString(TypeDecorator):
         cls._current_keyctx = keyctx
 
     @classmethod
-    def set_keyctx_resolver(cls, resolver: Callable[[int], KeyContext]) -> None:
+    def set_keyctx_resolver(cls, resolver: Callable[[str], KeyContext]) -> None:
         """
-        Set a resolver that, given a keyid, returns the appropriate KeyContext.
+        Set a resolver that, given a key id string (UUID), returns the appropriate KeyContext.
 
         The application wires this to its own DK storage/lookup logic.
         """
@@ -57,7 +57,7 @@ class EncryptedString(TypeDecorator):
         return cls._current_keyctx
 
     @classmethod
-    def _resolve_keyctx(cls, keyid: int) -> KeyContext:
+    def _resolve_keyctx(cls, keyid: str) -> KeyContext:
         if cls._keyctx_resolver is None:
             raise RuntimeError("EncryptedString.set_keyctx_resolver(...) must be called before use")
         return cls._keyctx_resolver(keyid)
@@ -81,8 +81,8 @@ class EncryptedString(TypeDecorator):
         """
         Called when reading from the DB.
 
-        - Parses the prefix to extract keyid.
-        - Resolves the correct KeyContext for that keyid.
+        - Parses the prefix to extract key id.
+        - Resolves the correct KeyContext for that key id.
         - Returns a LazySecret that decrypts on access.
         """
         if value is None:

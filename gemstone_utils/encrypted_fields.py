@@ -17,6 +17,7 @@ from .crypto import (
     encrypt_alg,
     is_supported_sym_alg,
 )
+from .key_id import normalize_key_id
 from .types import KeyContext
 
 
@@ -48,19 +49,29 @@ def _decode_params_segment(segment: str) -> Dict[str, Any]:
     return data
 
 
+def _parse_key_id_segment(seg: str) -> str:
+    if seg.isdigit():
+        raise ValueError(
+            "legacy integer key id in encrypted field; migrate ciphertext to UUID "
+            "key ids (see gemstone_utils migration docs) before using this version"
+        )
+    return normalize_key_id(seg)
+
+
 def format_encrypted_field(
     alg: str,
-    keyid: int,
+    keyid: str,
     blob: bytes,
     params: Optional[Dict[str, Any]] = None,
 ) -> str:
     if not is_supported_sym_alg(alg):
         raise ValueError(f"Unsupported symmetric alg: {alg}")
     p = {} if params is None else params
-    return f"${alg}${keyid}${_encode_params_segment(p)}${b64encode(blob)}"
+    kid = normalize_key_id(keyid)
+    return f"${alg}${kid}${_encode_params_segment(p)}${b64encode(blob)}"
 
 
-def parse_encrypted_field(value: str) -> Tuple[str, int, Dict[str, Any], bytes]:
+def parse_encrypted_field(value: str) -> Tuple[str, str, Dict[str, Any], bytes]:
     parts = value.split("$")
     if parts[0] != "":
         raise ValueError("invalid encrypted field format")
@@ -74,13 +85,13 @@ def parse_encrypted_field(value: str) -> Tuple[str, int, Dict[str, Any], bytes]:
             stacklevel=2,
         )
         alg_id = parts[1]
-        keyid = int(parts[2])
+        keyid = _parse_key_id_segment(parts[2])
         blob = b64decode(parts[3])
         return alg_id, keyid, {}, blob
 
     if len(parts) == 5:
         alg_id = parts[1]
-        keyid = int(parts[2])
+        keyid = _parse_key_id_segment(parts[2])
         params = _decode_params_segment(parts[3])
         blob = b64decode(parts[4])
         return alg_id, keyid, params, blob

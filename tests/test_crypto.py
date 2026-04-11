@@ -13,6 +13,7 @@ from gemstone_utils.crypto import (
     recommended_data_alg,
     sym_alg_key_length,
 )
+from gemstone_utils.key_id import new_key_id
 from gemstone_utils.types import KeyContext
 
 
@@ -42,7 +43,8 @@ def test_unknown_alg_generate_raises():
 
 def test_encrypt_string_roundtrip_field_format():
     key = generate_key_by_alg(recommended_data_alg())
-    ctx = KeyContext(keyid=1, key=key)
+    kid = new_key_id()
+    ctx = KeyContext(keyid=kid, key=key)
     wire = encrypt_string("hello", ctx)
     assert decrypt_string(wire, ctx) == "hello"
 
@@ -50,3 +52,12 @@ def test_encrypt_string_roundtrip_field_format():
 def test_recommended_data_alg_matches_registry():
     assert recommended_data_alg() == RECOMMENDED_DATA_ALG
     assert recommended_data_alg() in SUPPORTED_SYM_ALGS
+
+
+def test_legacy_integer_key_segment_raises():
+    from gemstone_utils.encrypted_fields import parse_encrypted_field
+
+    # Five $-segments: '' , alg, keyid, params_b64, blob_b64
+    legacy = "$A256GCM$1$e30$e30"
+    with pytest.raises(ValueError, match="legacy integer"):
+        parse_encrypted_field(legacy)

@@ -23,12 +23,12 @@ _cache: dict[str, str] = {}
 _backends: dict[str, Callable[[str], str | None]] = {}
 _known_optional_backends = {"sqlexp", "azexp"}
 
-_keyctx_resolver: Optional[Callable[[int], KeyContext]] = None
+_keyctx_resolver: Optional[Callable[[str], KeyContext]] = None
 
 
-def set_keyctx_resolver(func: Callable[[int], KeyContext]) -> None:
+def set_keyctx_resolver(func: Callable[[str], KeyContext]) -> None:
     """
-    Register a resolver that, given a keyid, returns the correct KeyContext.
+    Register a resolver that, given a key id string (UUID), returns the correct KeyContext.
     The application must call this at startup.
     """
     global _keyctx_resolver

@@ -17,8 +17,8 @@ The package is licensed under the **MPL‑2.0**, allowing use in both open‑sou
 - Minimal, dependency‑light design
 
 ### 🧩 Encrypted fields
-- `$A256GCM$keyid$base64(json)$base64(blob)` encrypted‑field format (algorithm parameters + ciphertext)
-- `KeyContext` (`keyid`, `key`, `alg`) in `gemstone_utils.types`
+- `$A256GCM$<uuid>$base64(json)$base64(blob)` encrypted‑field format (segment 2 is a **canonical UUID** string, typically UUIDv7 from `gemstone_utils.key_id.new_key_id()`)
+- `KeyContext` (`keyid` as `str`, `key`, `alg`) in `gemstone_utils.types`
 - `encrypt_string()` and `decrypt_string()` helpers in `gemstone_utils.encrypted_fields`
 
 ### 🗄️ SQLAlchemy integration
@@ -35,10 +35,10 @@ The package is licensed under the **MPL‑2.0**, allowing use in both open‑sou
 - **`gemstone_utils.key_mgmt.kdf`** — documented contract (`RecommendedKdfParamsFn`, `HasKdfRegistryName`) and per‑algorithm modules (e.g. **`kdf.pbkdf2`**: `NAME`, `pbkdf2_params`, `recommended_pbkdf2_params`) when you pin a specific algorithm instead of the default.
 
 ### 🔑 SQL key storage (`sqlalchemy.key_storage`)
-- Tables `gemstone_key_kdf` (persisted KDF JSON per KEK slot + timestamps) and `gemstone_key_record` (wrapped keys in the same five‑part wire format as encrypted columns, plus **`data_alg`**, **`is_active`**, **`created_at`**, **`updated_at`**)
-- Logical `key_id` **0** holds the KEK **canary**; **1+** hold **DEKs** referenced by `EncryptedString` ciphertexts. The **segment** `keyid` inside each wire string is the KEK slot (foreign meaning: row in `gemstone_key_kdf`), not the DEK’s logical id.
-- Bootstrap persisted KDF rows with **`new_kdf_params()`** (alias of **`recommended_kdf_params`**) or your own params dict; **`salt` must always be stored** in JSON for PBKDF2 rows.
-- **`put_keyrecord()`** is the supported way to insert canary and DEK rows (validates **`data_alg`**, maintains a single active DEK when **`is_active=True`**, sets timestamps).
+- Tables `gemstone_key_kdf` (KEK slot: persisted KDF JSON, **`canary_wrapped`**, optional **`app_reencrypt_pending`**, timestamps) and `gemstone_key_record` (**DEKs only**: wrapped keys in the same five‑part wire format as encrypted columns, plus **`data_alg`**, **`is_active`**, **`created_at`**, **`updated_at`**). Primary keys are **UUID strings** (`String(36)` until v0.9.0; see release notes).
+- The KEK **canary** lives on the **`gemstone_key_kdf`** row (`canary_wrapped`), not in `gemstone_key_record`. The **segment** `keyid` inside each wrapped DEK wire string is the KEK slot id (row in `gemstone_key_kdf`). The **segment** in **application** `EncryptedString` ciphertext is the **DEK** id (`gemstone_key_record.key_id`).
+- Bootstrap with **`new_kdf_params()`** (alias of **`recommended_kdf_params`**) or your own params dict; **`salt` must always be stored** in JSON for PBKDF2 rows. Use **`set_kdf_params`**, **`set_kek_canary`**, then **`put_keyrecord`** for the DEK.
+- **`put_keyrecord()`** inserts DEK rows only (validates **`data_alg`**, maintains a single active DEK when **`is_active=True`**, sets timestamps).
 - `make_keyctx_resolver()` wires `EncryptedString.set_keyctx_resolver()` to `get_session()` + persisted rows + `derive_kek` / unwrap; **`KeyContext.alg`** comes from the row’s **`data_alg`** (field algorithm), not the wrap algorithm inside `wrapped`.
 - `rewrap_key_records()` performs `rotate_kek`‑style batch re‑wrap inside a transaction you open with `with session.begin(): ...` and bumps **`updated_at`** on touched rows.
 
@@ -106,11 +106,14 @@ salt = resolve_secret("env:APP_DK_SALT").encode("utf-8")
 
 dk = derive_kek(passphrase, pbkdf2_params(salt))
 # or: derive_kek(passphrase, recommended_kdf_params(salt))
-ctx = KeyContext(keyid=1, key=dk)
+from gemstone_utils.key_id import new_key_id
+
+kid = new_key_id()
+ctx = KeyContext(keyid=kid, key=dk)
 
 EncryptedString.set_current_keyctx(ctx)
 
-def resolve_enc_keyctx(keyid: int) -> KeyContext:
+def resolve_enc_keyctx(keyid: str) -> KeyContext:
     if keyid != ctx.keyid:
         raise ValueError(f"unknown keyid {keyid}")
     return ctx
@@ -126,6 +129,7 @@ EncryptedString.set_keyctx_resolver(resolve_enc_keyctx)
 import gemstone_utils.sqlalchemy.key_storage  # registers ORM tables on GemstoneDB
 from gemstone_utils.crypto import generate_key_by_alg, recommended_data_alg
 from gemstone_utils.db import get_session, init_db
+from gemstone_utils.key_id import new_key_id
 from gemstone_utils.key_mgmt import derive_kek, init as key_mgmt_init, make_kek_check_record
 from gemstone_utils.sqlalchemy.encrypted_type import EncryptedString
 from gemstone_utils.sqlalchemy.key_storage import (
@@ -134,6 +138,7 @@ from gemstone_utils.sqlalchemy.key_storage import (
     new_kdf_params,
     put_keyrecord,
     set_kdf_params,
+    set_kek_canary,
     wire_wrap,
 )
 from gemstone_utils.types import KeyContext
@@ -144,22 +149,23 @@ key_mgmt_init("vault_passphrase", b"constant-canary-bytes", env_allowed=True)
 passphrase = "human vault passphrase"
 kdf = new_kdf_params()
 kek = derive_kek(passphrase, kdf)
+kek_id = new_key_id()
+dek_id = new_key_id()
 dek_material = generate_key_by_alg(recommended_data_alg())
-dek = KeyContext(keyid=1, key=dek_material)
+dek = KeyContext(keyid=dek_id, key=dek_material)
 
 with get_session() as session:
     with session.begin():
-        set_kdf_params(session, 1, kdf)
-        put_keyrecord(
+        set_kdf_params(session, kek_id, kdf)
+        set_kek_canary(
             session,
-            key_id=0,
-            wrapped=keyrecord_to_wire(make_kek_check_record(kek), 1),
-            is_active=False,
+            kek_id,
+            keyrecord_to_wire(make_kek_check_record(kek), kek_id),
         )
         put_keyrecord(
             session,
-            key_id=1,
-            wrapped=wire_wrap(1, kek, dek.key),
+            key_id=dek_id,
+            wrapped=wire_wrap(kek_id, kek, dek.key),
             is_active=True,
         )
 
@@ -236,7 +242,7 @@ Install `gemstone_utils[azure]` and authenticate with `DefaultAzureCredential`.
 Use `azexp_backend.set_azexp_credential(...)` to override credentials.
 
 ### Encrypted field values (`$A256GCM$…`)
-Values use the wire form `$A256GCM$<keyid>$<base64(json)>$<base64(blob)>`: URL-safe base64 of a JSON object for per-algorithm parameters (currently `{}` for `A256GCM`), then URL-safe base64 of the ciphertext blob. Automatically decrypted using `secrets_resolver.set_keyctx_resolver` (separate from `EncryptedString.set_keyctx_resolver`).
+Values use the wire form `$A256GCM$<uuid>$<base64(json)>$<base64(blob)>` where `<uuid>` is a canonical UUID string (segment 2). URL-safe base64 of a JSON object for per-algorithm parameters (currently `{}` for `A256GCM`), then URL-safe base64 of the ciphertext blob. Automatically decrypted using `secrets_resolver.set_keyctx_resolver` (separate from `EncryptedString.set_keyctx_resolver`).
 
 ---
 

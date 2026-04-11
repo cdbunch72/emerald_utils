@@ -22,31 +22,29 @@ Pre-release versions follow **[PEP 440](https://packaging.python.org/en/latest/s
 
 Development toward **v0.3.0**. This entry is updated incrementally until the stable `v0.3.0` release.
 
-### Encrypted field wire format (incremental)
+### Encrypted field wire format
 
-- **New canonical form (five `$`-separated segments):** `$<alg>$<keyid>$<params_b64>$<blob_b64>` where **`<alg>`** is a registered symmetric id (today **`A256GCM`**). New writes use **`encrypt_alg`**; the first segment matches **`KeyContext.alg`**.
-  - `<params_b64>` is URL-safe base64 (same alphabet as the ciphertext segment) of **UTF-8 JSON** encoding a single **JSON object** of algorithm parameters. For **`A256GCM`** today, writers emit **`{}`** (empty object). The segment is reserved for future algorithms or optional nonce/AAD-style metadata without changing the overall framing.
-  - `<blob_b64>` is unchanged from v0.2.x: the opaque ciphertext blob produced by the registered encrypt implementation (for `A256GCM`, nonce + ciphertext as today).
-- **Legacy four-part strings** (`$A256GCM$<keyid>$<blob_b64>`) are still **accepted** for decrypt and for parsing; reading them emits a **`DeprecationWarning`**. They are **deprecated** in v0.3.x and **scheduled for removal in v0.9.0** (before **1.0**). New writes use the five-part form only.
-- **Migration:** Re-encrypting stored fields during a **key rotation** on gemstone_utils **≥ 0.3.0** replaces legacy strings with the new form.
+- **Five `$`-separated segments:** `$<alg>$<key_id>$<params_b64>$<blob_b64>` where **`<alg>`** is a registered symmetric id (today **`A256GCM`**). **`<key_id>`** is a **canonical UUID string** (typically **UUIDv7** from **`gemstone_utils.key_id.new_key_id()`**). Legacy **integer** segment values are **rejected** at parse time; migrate stored ciphertext before upgrading.
+- **Legacy four-part strings** still emit a **`DeprecationWarning`** and are **scheduled for removal in 0.9.0**; segment 2 must still be a UUID string when using the new parsers.
+- **Migration:** Run a **data migration** (application-specific). A **documentation-only** outline lives at **`scripts/migrate_key_ids.py`**. Migration support is documented through **v0.9.0**.
 
-### API changes (incremental)
+### API changes (breaking)
 
-- **`parse_encrypted_field(value)`** now returns a **4-tuple** `(alg_id, keyid, params, blob)` where `params` is a `dict` (empty for legacy four-part values).
-- **Breaking — `gemstone_utils.crypto`:** **`SYM_ALG_REGISTRY`**, **`SUPPORTED_SYM_ALGS`**, **`is_supported_sym_alg`**, **`sym_alg_key_length`**, **`generate_key_by_alg`**, **`encrypt_alg`**, **`decrypt_alg`**. **`encrypt_alg`** returns **`(ciphertext, updated_params)`**; callers persist `updated_params` in the wire JSON segment when needed. **`encrypt_with_alg` / `decrypt_with_alg`** remain as thin helpers (ciphertext-only encrypt; empty params decrypt).
-- **`RECOMMENDED_DATA_ALG`** and **`recommended_data_alg()`** — library default symmetric algorithm id for **field** encryption (aligned with **`KeyContext.alg`** default and **`put_keyrecord(..., data_alg=...)`** default).
-- **`KeyContext.alg`** default is **`field(default_factory=recommended_data_alg)`** (still **`A256GCM`** while that remains the recommended id).
-- **Breaking — `format_encrypted_field`:** signature is **`(alg, keyid, blob, params=None)`** (algorithm id first). Previously the first argument was `keyid` and the algorithm was hardcoded to `A256GCM`.
-- **Breaking — `KeyRecord`:** adds **`params`** (`dict`, default `{}`) for the wire params segment; **`unwrap_key` / `verify_kek` / `wrap_key`** pass it through to **`decrypt_alg` / `encrypt_alg`**.
-- **Breaking — `gemstone_utils.sqlalchemy.key_storage`:** **`GemstoneKeyRecord`** adds **`data_alg`**, **`is_active`**, **`created_at`**, **`updated_at`**; **`GemstoneKeyKdf`** adds **`created_at`**, **`updated_at`**. **`put_keyrecord`** is the supported insert API; **`put_wrapped_batch`** removed. **`set_kdf_params`** and **`rewrap_key_records`** maintain timestamps. **`make_keyctx_resolver`** sets **`KeyContext.alg`** from **`row.data_alg`**. Existing databases require **`ALTER TABLE`** (or recreate); there is no Alembic bundle in this repo.
-- **`is_encrypted_prefix`:** treats any **registered** algorithm segment as encrypted (not only `A256GCM`).
+- **`parse_encrypted_field(value)`** returns **`(alg_id, keyid, params, blob)`** where **`keyid`** is **`str`** (UUID text).
+- **`KeyContext.keyid`** and **`KeyRecord.keyid`** use **`str`** (UUID). **`KeyRecord.keyid`** may be **`None`** for a **KEK-check** blob only; **`verify_kek`** requires **`keyid is None`**; **`unwrap_key`** requires **`keyid`** set.
+- **`EncryptedString.set_keyctx_resolver`** and **`secrets_resolver.set_keyctx_resolver`** take **`Callable[[str], KeyContext]`**.
+- **Breaking — `gemstone_utils.crypto`:** symmetric registry, **`encrypt_alg`** / **`decrypt_alg`** (see prior notes); **`encrypt_alg`** returns **`(ciphertext, updated_params)`**.
+- **`format_encrypted_field(alg, keyid, blob, params=None)`** — **`keyid`** is **`str`** (UUID).
+- **Breaking — `gemstone_utils.sqlalchemy.key_storage`:** **`GemstoneKeyKdf.key_id`** and **`GemstoneKeyRecord.key_id`** are **`String(36)`** UUID text (native **`Uuid`** columns are **planned for v0.9.0**). **`GemstoneKeyKdf`** adds **`canary_wrapped`** and **`app_reencrypt_pending`**. The KEK canary **no longer** uses **`gemstone_key_record` `key_id == 0`**; use **`set_kek_canary`**. **`GemstoneKeyRecord`** holds **DEKs only**. **`rewrap_key_records`** rewraps **all** KEK-slot canaries and all DEK rows. Existing databases require **schema migration** (or recreate).
+- **`is_encrypted_prefix`:** unchanged behavior (registered algorithm segment).
 
 ### Requirements
 
-Unchanged from v0.2.1 unless noted later in this section.
+- **`uuid6`** is installed automatically on **Python &lt; 3.14** for UUIDv7 generation (**`gemstone_utils.key_id`**). Python **3.14+** uses **`uuid.uuid7()`** from the standard library.
 
 ### `key_mgmt` package and KDF registry
 
+- **`verify_kek`** / **`make_kek_check_record`:** KEK-check records use **`KeyRecord.keyid is None`** (no sentinel integer **`0`**).
 - **Breaking:** `gemstone_utils.key_mgmt` is now a **package** (`key_mgmt/__init__.py`, `key_mgmt/registry.py`, `key_mgmt/kdf/…`). Imports like `from gemstone_utils.key_mgmt import derive_kek` still work.
 - **Registry:** `register_kdf` and `derive_kek(passphrase, params)` live in `key_mgmt.registry` and are re-exported from `gemstone_utils.key_mgmt`.
 - **`recommended_kdf_params(salt=None)`** — single entry point for the library’s *current* recommended KDF params (today delegates to `key_mgmt.kdf.pbkdf2.recommended_pbkdf2_params`).
@@ -56,8 +54,7 @@ Unchanged from v0.2.1 unless noted later in this section.
 
 ### SQL key storage and KDF defaults
 
-- **`gemstone_utils.sqlalchemy.key_storage`:** Models `GemstoneKeyKdf` and `GemstoneKeyRecord` (tables `gemstone_key_kdf`, `gemstone_key_record`). Logical `key_id` **0** is the KEK canary; **1+** are DEKs. The wire segment `keyid` identifies the KEK slot (KDF row), not the DEK’s primary key.
-- **Helpers:** `new_kdf_params` (wrapper around `recommended_kdf_params`), `wire_wrap`, `wire_to_keyrecord`, `keyrecord_to_wire`, `unwrap_stored_key`, `set_kdf_params` / `get_kdf_params`, `put_keyrecord`, `rewrap_key_records`, `make_keyctx_resolver`.
+- **`gemstone_utils.sqlalchemy.key_storage`:** See API changes above. New helpers: **`set_kek_canary`**, **`set_app_reencrypt_pending`**, **`iter_kek_slots`**.
 - **`crypto`:** `derive_pbkdf2_hmac_sha256` (low-level primitive), `DEFAULT_PBKDF2_ITERATIONS_STRONG`, symmetric registry / `encrypt_alg` / `generate_key_by_alg`, and **`recommended_data_alg()`** / **`RECOMMENDED_DATA_ALG`** as above.
 
 ### Development
