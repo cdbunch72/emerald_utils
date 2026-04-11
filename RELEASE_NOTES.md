@@ -13,14 +13,14 @@ Pre-release versions follow **[PEP 440](https://packaging.python.org/en/latest/s
 
 ---
 
-## v0.3.0.dev0 (in development)
+## v0.3.0a1 (alpha)
 
-**Tag:** *(not yet published)*  
-**PyPI:** install from a git checkout or sdist built locally; version string is `0.3.0.dev0`.
+**Tag:** `v0.3.0a1`  
+**PyPI:** `pip install gemstone_utils==0.3.0a1` or `pip install --pre gemstone_utils` (see [pre-release install behavior](https://pip.pypa.io/en/stable/cli/pip_install/#pre-release-versions)).
 
 ### Overview
 
-Development toward **v0.3.0**. This entry is updated incrementally until the stable `v0.3.0` release.
+First **alpha** toward **v0.3.0**. API and behavior may still change before the stable release; see the pre-release naming section above.
 
 ### Encrypted field wire format
 
