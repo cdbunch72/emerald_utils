@@ -5,11 +5,26 @@
 Pre-release versions follow **[PEP 440](https://packaging.python.org/en/latest/specifications/version-specifiers/)** ordering (`dev` &lt; `a` &lt; `b` &lt; `rc` &lt; final). For **this project**, the qualifiers mean:
 
 - **`dev` (e.g. `0.3.0.dev0`):** Development on the main integration line; not a promise that every commit is green. Intended for contributors and early git installs, not as a stability guarantee.
-- **`a` (alpha, e.g. `0.3.0a1`):** New features and API changes are still allowed. The tree is expected to **build**, and **happy-path tests** pass under normal CI conditions—not a promise of production readiness.
+- **`a` (alpha, e.g. `0.3.0a2`):** New features and API changes are still allowed. The tree is expected to **build**, and **happy-path tests** pass under normal CI conditions—not a promise of production readiness.
 - **`b` (beta, e.g. `0.3.0b1`):** **API stable** for that line; suitable for **real-world integration** testing and feedback. Further changes should be fixes and polish, not redesign.
 - **`rc` (release candidate, e.g. `0.3.0rc1`):** Treated as **release-ready** pending last checks; **feature freeze** except for regressions, docs, and blockers. If nothing new surfaces, the final release matches the RC artifact.
 
 **Releases before 1.0** may skip stages (for example a minor may go straight from `0.2.x` to `0.3.0` without publishing an alpha or beta) when the change set is small.
+
+---
+
+## v0.3.0a2 (alpha)
+
+**Tag:** `v0.3.0a2`  
+**PyPI:** `pip install gemstone_utils==0.3.0a2` or `pip install --pre gemstone_utils` (see [pre-release install behavior](https://pip.pypa.io/en/stable/cli/pip_install/#pre-release-versions)).
+
+### Overview
+
+Second **alpha** toward **v0.3.0**. API and runtime behavior are unchanged from **v0.3.0a1**; this release updates **published package metadata** so the PyPI project homepage and other `[project.urls]` fields reflect the repository under the **`gemstone-software-dev`** organization.
+
+### Changes since v0.3.0a1
+
+- **Packaging / documentation:** [Project homepage](https://github.com/gemstone-software-dev/gemstone_utils) in `pyproject.toml` and release-note URLs align with the org repo (see sections below). No code or API changes.
 
 ---
 
