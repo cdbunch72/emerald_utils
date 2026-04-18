@@ -44,12 +44,11 @@ This page lists **stable, intended** entry points for application use. It is not
 
 ## Database (`gemstone_utils.db`)
 
-- `init_db`, `get_session`, `GemstoneDB` — as used by key storage and experimental SQL backends
+- `init_db`, `get_session`, `GemstoneDB` — as used by key storage and optional resolver plugins
 
 ## Experimental
 
 - `gemstone_utils.experimental.secrets_resolver` — `resolve_secret`, `set_keyctx_resolver`, `register_backend`
-- `gemstone_utils.experimental.sqlexp` / `sqlexp_backend` — minimal SQL KV store
 - `gemstone_utils.experimental.azexp_backend` — Azure Key Vault (extra `[azure]`)
 
 ## Further reading

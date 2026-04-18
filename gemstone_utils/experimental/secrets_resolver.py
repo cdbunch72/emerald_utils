@@ -21,7 +21,7 @@ from gemstone_utils.types import KeyContext
 
 _cache: dict[str, str] = {}
 _backends: dict[str, Callable[[str], str | None]] = {}
-_known_optional_backends = {"sqlexp", "azexp"}
+_known_optional_backends = {"azexp"}
 
 _keyctx_resolver: Optional[Callable[[str], KeyContext]] = None
 

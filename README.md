@@ -62,16 +62,10 @@ Supports:
 - `env:` — environment variables (cached + scrubbed)
 - `file:` — read from filesystem
 - `secret:` — systemd / container secret directories
-- pluggable backends (`sqlexp:`, `azexp:`) enabled by explicitly importing plugin modules
+- pluggable backend (`azexp:`) enabled by explicitly importing the plugin module
 - `$A256GCM$keyid$base64(json)$base64(blob)` encrypted values (requires `secrets_resolver.set_keyctx_resolver`)
 
 Not intended to be the final vault/meta‑manager.
-
-### 🧪 Experimental SQL backend (`sqlexp`)
-- Simple key/value table using SQLAlchemy
-- Stores encrypted values
-- No ACLs, hierarchy, or versioning
-- Intended for bootstrap use only
 
 ---
 
@@ -206,7 +200,6 @@ class OAuthToken(Base):
 ```python
 from pydantic import BaseModel, field_validator
 from gemstone_utils.experimental.secrets_resolver import resolve_secret
-from gemstone_utils.experimental import sqlexp_backend  # enables sqlexp:
 
 class Config(BaseModel):
     api_token: str
@@ -216,8 +209,6 @@ class Config(BaseModel):
     def load_secret(cls, v):
         return resolve_secret(v)
 ```
-
-`sqlexp:` uses `gemstone_utils.db.get_session()` internally. Call `init_db(...)` before resolving `sqlexp:` values.
 
 Config example:
 
@@ -241,11 +232,6 @@ Searches:
 - `/run/secrets/name`
 - `/var/run/secrets/name`
 
-### `sqlexp:key`
-Reads from the experimental SQL key/value store. Enabled by importing
-`gemstone_utils.experimental.sqlexp_backend` (or calling its `enable()`).
-Uses `gemstone_utils.db.get_session()` internally.
-
 ### `azexp:https://vault.vault.azure.net/secrets/name`
 Fetches from Azure Key Vault. Enabled by importing
 `gemstone_utils.experimental.azexp_backend` (or calling its `enable()`).
@@ -262,7 +248,6 @@ Values use the wire form `$A256GCM$<uuid>$<base64(json)>$<base64(blob)>` where `
 The following modules are intentionally minimal and **will not** be part of the future vault/meta‑manager:
 
 - `gemstone_utils.experimental.secrets_resolver`
-- `gemstone_utils.experimental.sqlexp`
 
 They exist to support early projects (GemstoneOps, Thaum, WebexCalling bridge) without constraining the design of the full resolver.
 

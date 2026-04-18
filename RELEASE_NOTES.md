@@ -13,6 +13,14 @@ Pre-release versions follow **[PEP 440](https://packaging.python.org/en/latest/s
 
 ---
 
+## Unreleased
+
+### Breaking changes
+
+- **Removed experimental SQL KV:** `gemstone_utils.experimental.sqlexp` and `gemstone_utils.experimental.sqlexp_backend` are deleted. The `sqlexp:` prefix is no longer a recognized optional backend in `secrets_resolver`. For bootstrap secrets, use `env:`, `file:`, `secret:`, or `azexp:` (with `gemstone_utils[azure]`). For application secrets after `init_db`, use `EncryptedString` / `encrypted_fields` or your own tables.
+
+---
+
 ## v0.3.0a2 (alpha)
 
 **Tag:** `v0.3.0a2`  

@@ -11,7 +11,6 @@ The module `gemstone_utils.experimental.secrets_resolver` resolves string refere
 | `env:VAR` | Read `os.environ[VAR]`, cache, then **delete** the variable from the environment (scrub). |
 | `file:/path` | Read UTF-8 file once, strip, cache. |
 | `secret:name` | Search `CREDENTIALS_DIRECTORY`, `/run/secrets/`, `/var/run/secrets/` (via `resolve_file`). |
-| `sqlexp:...` | Optional SQL backend — import `gemstone_utils.experimental.sqlexp_backend` (or call `enable()`). Uses `get_session()`; requires `init_db` first. |
 | `azexp:https://...` | Optional Azure Key Vault — import `gemstone_utils.experimental.azexp_backend`; requires `gemstone_utils[azure]`. |
 
 Unknown prefixes can be registered with `register_backend(prefix, resolver, ...)`.
@@ -32,6 +31,6 @@ If the resolved string looks like an encrypted field (`is_encrypted_prefix`), it
 
 - **`env:` scrubbing** removes variables after first read; behavior is process-global.
 - **Caching** applies to env, file, and secret paths; treat the process as holding secrets in memory.
-- **Plugins** (`sqlexp`, `azexp`) are optional and must be explicitly imported to register.
+- **Plugin** `azexp` is optional and must be explicitly imported to register.
 
 For backend-specific details, see [README.md](../README.md#secret-resolver-backends).
