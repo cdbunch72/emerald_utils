@@ -12,6 +12,7 @@ Per-function and per-class reference material lives in the **[API reference](ref
 | Persisted keys and rotation | `sqlalchemy.key_storage`, `key_mgmt`, `db` | [key-storage.md](key-storage.md) |
 | Leader election | `election`, `db` | [election.md](election.md) |
 | Config secret references | `experimental.secrets_resolver` | [secrets-resolver.md](secrets-resolver.md) |
+| Path specifier expansion | `experimental.pathspec` (+ `.pydantic`) | [pathspec.md](pathspec.md) |
 | Breaking changes | — | [release-notes.md](release-notes.md) |
 
 ## Typical bootstrap order
@@ -23,7 +24,7 @@ Applications that use encrypted columns **and** persisted keys usually wire thin
 3. **Persisted keys** — `set_kdf_params`, `set_kek_canary`, `put_keyrecord` (see [key-storage.md](key-storage.md)).
 4. **`EncryptedString.set_current_keyctx`** — active DEK for new writes.
 5. **`EncryptedString.set_keyctx_resolver`** — often `make_keyctx_resolver()` from `key_storage`.
-6. **Optional:** `secrets_resolver.set_keyctx_resolver` if config values use encrypted wires; `set_allowed_file_path_prefixes` for non-container `file:` paths; `set_strict_prefix_dispatch(True)` when every validated field is a secret reference and unknown prefixes should fail loud.
+6. **Optional:** `secrets_resolver.set_keyctx_resolver` if config values use encrypted wires; `set_allowed_file_path_prefixes` for non-container `file:` paths; `set_strict_prefix_dispatch(True)` when every validated field is a secret reference and unknown prefixes should fail loud. When using path specifiers, build a `PathSpecifierContext` first and pass `context={"paths": ctx}` into Pydantic validation; expand allowlist prefixes with `expand_path_specifiers` before `set_allowed_file_path_prefixes`.
 
 For election-only or resolver-only apps, skip the steps that do not apply.
 
@@ -69,8 +70,14 @@ See [election.md](election.md) for protocol rules and limitations.
 
 Not a full secrets manager — see [secrets-resolver.md](secrets-resolver.md).
 
+## Experimental path specifiers
+
+**`build_path_context`** / **`expand_path_specifiers`** expand `%t`, `%S`, `%E`, `%C`, `%D`, `%L`, and `%%` using bare systemd-style roots. Optional **`gemstone_utils[pydantic]`** types **`ResolvedFsPath`** and **`ResolvedSecretRef`** (expand then absolute, or expand then `resolve_secret`) take context key **`paths`**.
+
+See [pathspec.md](pathspec.md).
+
 ## API reference
 
 Public modules use **Google-style docstrings** (`Args`, `Returns`, `Raises`, `Attributes`). The exhaustive symbol index is in the separate **[API reference](reference/index.md)** section. **This page remains the usage guide**; autodoc is the per-module index.
 
-Modules covered: `crypto`, `key_id`, `types`, `encrypted_fields`, `key_mgmt` (+ `registry`, `kdf`), `sqlalchemy.encrypted_type`, `sqlalchemy.lazy_secret`, `sqlalchemy.key_storage`, `db`, `election`, `experimental.secrets_resolver`.
+Modules covered: `crypto`, `key_id`, `types`, `encrypted_fields`, `key_mgmt` (+ `registry`, `kdf`), `sqlalchemy.encrypted_type`, `sqlalchemy.lazy_secret`, `sqlalchemy.key_storage`, `db`, `election`, `experimental.secrets_resolver`, `experimental.pathspec` (+ `pathspec.pydantic`).

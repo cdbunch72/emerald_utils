@@ -15,6 +15,7 @@ sqlalchemy
 key-storage
 election
 secrets-resolver
+pathspec
 ```
 
 ## Release notes
@@ -45,6 +46,7 @@ reference/index
 | Persisted keys (`key_storage`), bootstrap | {doc}`key-storage` |
 | SQL-backed leader election | {doc}`election` |
 | Experimental `resolve_secret` and backends | {doc}`secrets-resolver` |
+| Experimental path specifiers (`%t` / `%E` / …) | {doc}`pathspec` |
 | Curated public API (stable vs experimental) | {doc}`api` |
 | Breaking changes and migration | {doc}`release-notes` |
 

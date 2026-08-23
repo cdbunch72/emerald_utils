@@ -15,7 +15,10 @@ Pre-release versions follow **[PEP 440](https://packaging.python.org/en/latest/s
 
 ## Unreleased
 
-Nothing yet.
+### Experimental — path specifiers
+
+- **`gemstone_utils.experimental.pathspec`:** Expand `%t`, `%S`, `%E`, `%C`, `%D`, `%L`, and `%%` via `build_path_context` / `expand_path_specifiers` (SYSTEM / USER / AUTO layouts; bare roots; optional programmatic root overrides including `%E` for CLI).
+- **`gemstone_utils[pydantic]`** extra and **`pathspec.pydantic`:** `ResolvedFsPath` (expand → absolute) and `ResolvedSecretRef` (expand → `resolve_secret`), context key `paths`.
 
 ---
 

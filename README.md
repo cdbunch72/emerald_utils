@@ -14,6 +14,7 @@ Full documentation (user guides, release notes, and API reference): **[gemstone-
 | Persisted keys (`key_storage`), two-level wire semantics, bootstrap | [docs/key-storage.md](docs/key-storage.md) |
 | SQL-backed leader election | [docs/election.md](docs/election.md) |
 | Experimental `resolve_secret` and backends | [docs/secrets-resolver.md](docs/secrets-resolver.md) |
+| Experimental path specifiers (`%t` / `%E` / …) | [docs/pathspec.md](docs/pathspec.md) |
 | Curated public API (stable vs experimental) | [docs/api.md](docs/api.md) |
 
 Breaking changes and migration (including UUID key ids): [RELEASE_NOTES.md](RELEASE_NOTES.md). A data-migration outline for key ids: [scripts/migrate_key_ids.py](scripts/migrate_key_ids.py).
@@ -257,6 +258,7 @@ Values use the wire form `$A256GCM$<uuid>$<base64(json)>$<base64(blob)>` where `
 The following modules are intentionally minimal and **will not** be part of the future vault/meta‑manager:
 
 - `gemstone_utils.experimental.secrets_resolver`
+- `gemstone_utils.experimental.pathspec` (optional `pathspec.pydantic` with `gemstone_utils[pydantic]`)
 
 They exist to support early projects (GemstoneOps, Thaum, WebexCalling bridge) without constraining the design of the full resolver.
 

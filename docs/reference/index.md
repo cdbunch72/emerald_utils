@@ -20,4 +20,6 @@ sqlalchemy_encrypted_type
 sqlalchemy_lazy_secret
 sqlalchemy_key_storage
 secrets_resolver
+pathspec
+pathspec_pydantic
 ```
